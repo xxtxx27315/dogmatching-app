@@ -5,13 +5,10 @@ const config: CapacitorConfig = {
   appName: 'マッチングアプリ',
   webDir: 'out',
 
-  // ─── 開発時はこちらを有効化（Vercel URLを指定） ───────────────────────
-  // server: {
-  //   url: 'https://your-app.vercel.app',
-  //   cleartext: false,
-  // },
-
-  // ─── 本番ビルド時はserver設定をコメントアウトしてstatic exportを使用 ──
+  server: {
+    url: 'https://dogmatching-app.vercel.app',
+    cleartext: false,
+  },
 
   plugins: {
     SplashScreen: {
