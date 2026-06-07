@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.dogmatching_app.twa",
+    "sha256_cert_fingerprints": [
+      "A3:71:CF:E7:57:BC:FA:37:08:B6:43:8E:29:5D:13:67:57:6D:BF:D7:7F:3D:2C:D8:90:7C:EC:07:7B:2B:7E:62"
+    ]
+  }
+}]
