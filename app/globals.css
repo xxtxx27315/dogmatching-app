@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+}
+
+/* モバイルタッチ最適化 */
+html, body {
+  /* iOS のバウンススクロールを防止 */
+  overscroll-behavior: none;
+  /* タッチ操作の遅延除去 */
+  touch-action: manipulation;
+}
+
+/* iOS safe area 対応 */
+.h-safe-area-inset-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+}
+
+/* スクロールコンテナの最適化 */
+.overflow-y-auto, .overflow-y-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ドッグLIFE デザインシステム - ブラウン系 */
+:root {
+  --primary: #4a3728;
+  --accent: #c8956c;
+  --bg: #faf7f4;
+  --card: #ffffff;
+  --border: #e0d5c8;
+  --text: #2c1f14;
+  --muted: #a89080;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
+
+.card-shadow {
+  box-shadow: 0 2px 12px rgba(30,58,92,0.08);
+}
+
+.premium-button {
+  background: linear-gradient(135deg, #c8956c 0%, #a0714f 100%);
+  box-shadow: 0 4px 14px rgba(160,113,79,0.35);
+}
