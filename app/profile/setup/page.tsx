@@ -12,42 +12,91 @@ const PREFECTURES = ["北海道","青森県","岩手県","宮城県","秋田県"
 
 const CROP_SIZE = 300;
 
-function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob: Blob) => void; onCancel: () => void }) {
+function CropModal({ src, onConfirm, onCancel, circular = false }: {
+  src: string; onConfirm: (blob: Blob) => void; onCancel: () => void; circular?: boolean;
+}) {
   const [imgNatural, setImgNatural] = useState({ w: 0, h: 0 });
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [scale, setScale] = useState(1);
+  const [baseScale, setBaseScale] = useState(1);
+  const [zoom, setZoom] = useState(1);
   const [dragging, setDragging] = useState(false);
   const lastRef = useRef({ x: 0, y: 0 });
+  const pinchDistRef = useRef<number | null>(null);
+
+  const scale = baseScale * zoom;
 
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
       const s = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
-      setScale(s);
+      setBaseScale(s);
+      setZoom(1);
       setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });
       setPos({ x: (CROP_SIZE - img.naturalWidth * s) / 2, y: (CROP_SIZE - img.naturalHeight * s) / 2 });
     };
     img.src = src;
   }, [src]);
 
+  function applyZoom(newZoom: number, currentPos: { x: number; y: number }) {
+    const clamped = Math.min(4, Math.max(0.5, newZoom));
+    const oldScale = baseScale * zoom;
+    const newScale = baseScale * clamped;
+    const cx = CROP_SIZE / 2;
+    const cy = CROP_SIZE / 2;
+    const imgCx = (cx - currentPos.x) / oldScale;
+    const imgCy = (cy - currentPos.y) / oldScale;
+    setPos({ x: cx - imgCx * newScale, y: cy - imgCy * newScale });
+    setZoom(clamped);
+  }
+
   function getPoint(e: React.MouseEvent | React.TouchEvent) {
-    return "touches" in e ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: (e as React.MouseEvent).clientX, y: (e as React.MouseEvent).clientY };
+    if ("touches" in e && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: (e as React.MouseEvent).clientX, y: (e as React.MouseEvent).clientY };
+  }
+  function pinchDist(e: React.TouchEvent) {
+    if (e.touches.length < 2) return null;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   function onDown(e: React.MouseEvent | React.TouchEvent) {
+    if ("touches" in e && (e as React.TouchEvent).touches.length === 2) {
+      pinchDistRef.current = pinchDist(e as React.TouchEvent);
+      return;
+    }
     setDragging(true);
     lastRef.current = getPoint(e);
   }
   function onMove(e: React.MouseEvent | React.TouchEvent) {
-    if (!dragging) return;
     e.preventDefault();
+    if ("touches" in e && (e as React.TouchEvent).touches.length === 2) {
+      const dist = pinchDist(e as React.TouchEvent);
+      if (dist && pinchDistRef.current) {
+        const ratio = dist / pinchDistRef.current;
+        setPos(p => {
+          const newZoom = Math.min(4, Math.max(0.5, zoom * ratio));
+          const oldScale = baseScale * zoom;
+          const newScale = baseScale * newZoom;
+          const cx = CROP_SIZE / 2;
+          const cy = CROP_SIZE / 2;
+          const ix = (cx - p.x) / oldScale;
+          const iy = (cy - p.y) / oldScale;
+          setZoom(newZoom);
+          return { x: cx - ix * newScale, y: cy - iy * newScale };
+        });
+        pinchDistRef.current = dist;
+      }
+      return;
+    }
+    if (!dragging) return;
     const p = getPoint(e);
     const dx = p.x - lastRef.current.x;
     const dy = p.y - lastRef.current.y;
     lastRef.current = p;
     setPos(prev => ({ x: prev.x + dx, y: prev.y + dy }));
   }
-  function onUp() { setDragging(false); }
+  function onUp() { setDragging(false); pinchDistRef.current = null; }
 
   function handleConfirm() {
     const canvas = document.createElement("canvas");
@@ -57,8 +106,13 @@ function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob
     if (!ctx || !imgNatural.w) return;
     const img = new Image();
     img.onload = () => {
+      if (circular) {
+        ctx.beginPath();
+        ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+        ctx.clip();
+      }
       ctx.drawImage(img, pos.x, pos.y, imgNatural.w * scale, imgNatural.h * scale);
-      canvas.toBlob(blob => { if (blob) onConfirm(blob); }, "image/jpeg", 0.88);
+      canvas.toBlob(blob => { if (blob) onConfirm(blob); }, "image/jpeg", 0.92);
     };
     img.src = src;
   }
@@ -68,8 +122,8 @@ function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob
       <div className="bg-white rounded-2xl p-4 w-full max-w-xs">
         <p className="text-center text-sm font-bold mb-3" style={{ color: "#1e3a5c" }}>写真をトリミング</p>
         <div
-          className="relative overflow-hidden rounded-xl mx-auto select-none"
-          style={{ width: CROP_SIZE, height: CROP_SIZE, background: "#e5e7eb", cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
+          className="relative overflow-hidden mx-auto select-none"
+          style={{ width: CROP_SIZE, height: CROP_SIZE, background: "#e5e7eb", cursor: dragging ? "grabbing" : "grab", touchAction: "none", borderRadius: circular ? "50%" : "12px" }}
           onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
           onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
         >
@@ -78,8 +132,27 @@ function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob
               style={{ position: "absolute", left: pos.x, top: pos.y, width: imgNatural.w * scale, height: imgNatural.h * scale, userSelect: "none", pointerEvents: "none" }}
             />
           )}
+          {/* グリッド */}
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", left: "33.3%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.35)" }} />
+            <div style={{ position: "absolute", left: "66.6%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.35)" }} />
+            <div style={{ position: "absolute", top: "33.3%", left: 0, right: 0, height: 1, background: "rgba(255,255,255,0.35)" }} />
+            <div style={{ position: "absolute", top: "66.6%", left: 0, right: 0, height: 1, background: "rgba(255,255,255,0.35)" }} />
+          </div>
         </div>
-        <p className="text-xs text-center text-gray-400 mt-2 mb-4">ドラッグして位置を調整</p>
+
+        {/* ズームスライダー */}
+        <div className="mt-3 px-1">
+          <input type="range" min="50" max="400" value={Math.round(zoom * 100)}
+            onChange={e => applyZoom(Number(e.target.value) / 100, pos)}
+            className="w-full" style={{ accentColor: "#f59e0b" }}
+          />
+          <div className="flex justify-between text-xs mt-0.5" style={{ color: "#94a3b8" }}>
+            <span>縮小</span><span>拡大</span>
+          </div>
+        </div>
+        <p className="text-xs text-center mt-1 mb-3" style={{ color: "#94a3b8" }}>ドラッグで位置・スライダーで拡大縮小</p>
+
         <div className="flex gap-3">
           <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border text-sm font-semibold text-gray-600" style={{ borderColor: "#e8e4dd" }}>キャンセル</button>
           <button onClick={handleConfirm} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#1e3a5c" }}>確定</button>
@@ -232,7 +305,7 @@ export default function ProfileSetupPage() {
 
   return (
     <div className="min-h-screen px-4 py-8" style={{ background: "linear-gradient(135deg,#f0f4f8 0%,#e8e0d0 50%,#f5f0e8 100%)" }}>
-      {avatarCropSrc && <CropModal src={avatarCropSrc} onConfirm={handleAvatarCropConfirm} onCancel={() => setAvatarCropSrc(null)} />}
+      {avatarCropSrc && <CropModal src={avatarCropSrc} circular={true} onConfirm={handleAvatarCropConfirm} onCancel={() => setAvatarCropSrc(null)} />}
       {cropSrc && <CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={() => setCropSrc(null)} />}
 
       <div className="max-w-md mx-auto bg-white rounded-3xl p-6" style={{ boxShadow: "0 8px 40px rgba(30,58,92,0.10)" }}>
