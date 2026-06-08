@@ -31,13 +31,19 @@ export default function ChatPage() {
       const { data: msgs } = await supabase.from("messages").select("*").eq("match_id", matchId).order("created_at", { ascending: true });
       setMessages(msgs ?? []);
 
-      // 既読更新
       await supabase.from("messages").update({ is_read: true }).eq("match_id", matchId).neq("sender_id", user.id).eq("is_read", false);
 
-      // リアルタイム
+      // リアルタイム（相手のメッセージのみ追加、重複防止）
       supabase.channel(`chat-${matchId}`)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `match_id=eq.${matchId}` },
-          (payload) => setMessages(prev => [...prev, payload.new as Message]))
+          (payload) => {
+            const newMessage = payload.new as Message;
+            if (newMessage.sender_id === user.id) return; // 自分の送信は楽観的更新で表示済み
+            setMessages(prev => {
+              if (prev.some(m => m.id === newMessage.id)) return prev;
+              return [...prev, newMessage];
+            });
+          })
         .subscribe();
     }
     load();
@@ -49,15 +55,28 @@ export default function ChatPage() {
     e.preventDefault();
     if (!newMsg.trim() || !currentUserId || sending) return;
     setSending(true);
+    const content = newMsg.trim();
+    setNewMsg(""); // 入力欄を即クリア
+
     const supabase = createClient();
-    await supabase.from("messages").insert({ match_id: matchId, sender_id: currentUserId, content: newMsg.trim() });
-    setNewMsg("");
+    const { data } = await supabase
+      .from("messages")
+      .insert({ match_id: matchId, sender_id: currentUserId, content })
+      .select()
+      .single();
+
+    if (data) {
+      // 楽観的更新：送信したメッセージを即座に表示
+      setMessages(prev => {
+        if (prev.some(m => m.id === (data as Message).id)) return prev;
+        return [...prev, data as Message];
+      });
+    }
     setSending(false);
   }
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* ヘッダー */}
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100 flex-none">
         <Link href="/matches" className="p-1 text-gray-500 touch-manipulation"><ChevronLeft size={22} /></Link>
         <div className="w-9 h-9 rounded-full bg-amber-100 overflow-hidden flex items-center justify-center">
@@ -69,7 +88,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* メッセージ一覧 */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {messages.length === 0 && (
           <p className="text-center text-gray-400 text-sm py-8">マッチしました！最初のメッセージを送ってみよう🐾</p>
@@ -88,7 +106,6 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* 入力 */}
       <div className="flex-none bg-white border-t border-gray-100 px-4 py-3">
         <form onSubmit={sendMessage} className="flex items-center gap-3">
           <input value={newMsg} onChange={e => setNewMsg(e.target.value)}

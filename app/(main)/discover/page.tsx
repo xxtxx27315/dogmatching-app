@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { Heart, X, MapPin, Trophy } from "lucide-react";
+import { Heart, X, MapPin, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import type { Profile } from "@/types/database";
@@ -59,6 +59,7 @@ function DiscoverTab() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [matched, setMatched] = useState<string | null>(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
 
   const fetchDogs = useCallback(async () => {
     setLoading(true);
@@ -81,6 +82,7 @@ function DiscoverTab() {
   }, []);
 
   useEffect(() => { fetchDogs(); }, [fetchDogs]);
+  useEffect(() => { setPhotoIndex(0); }, [index]);
 
   async function handleLike() {
     if (!currentUserId || index >= dogs.length) return;
@@ -141,15 +143,36 @@ function DiscoverTab() {
   }
 
   const dog = dogs[index];
+  const dogPhotos = (dog as Profile & { photo_urls?: string[] }).photo_urls ?? [];
+  const allPhotos = dogPhotos.length > 0 ? dogPhotos : (dog.avatar_url ? [dog.avatar_url] : []);
+
   return (
     <div className="flex-1 flex flex-col p-4 overflow-hidden">
       <div className="flex-1 bg-white rounded-3xl shadow-lg overflow-hidden relative">
-        {dog.avatar_url ? (
-          <img src={dog.avatar_url} alt={dog.dog_name} className="w-full h-full object-cover" />
+        {allPhotos.length > 0 ? (
+          <img src={allPhotos[photoIndex]} alt={dog.dog_name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full bg-amber-50 flex items-center justify-center">
             <span className="text-8xl">🐕</span>
           </div>
+        )}
+        {allPhotos.length > 1 && (
+          <>
+            <button onClick={(e) => { e.stopPropagation(); setPhotoIndex(i => (i - 1 + allPhotos.length) % allPhotos.length); }}
+              className="absolute left-2 top-1/3 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center touch-manipulation z-10">
+              <ChevronLeft size={18} color="white" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setPhotoIndex(i => (i + 1) % allPhotos.length); }}
+              className="absolute right-2 top-1/3 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center touch-manipulation z-10">
+              <ChevronRight size={18} color="white" />
+            </button>
+            <div className="absolute top-3 left-0 right-0 flex justify-center gap-1.5 z-10">
+              {allPhotos.map((_, i) => (
+                <div key={i} className="rounded-full transition-all"
+                  style={{ width: i === photoIndex ? 16 : 6, height: 4, background: i === photoIndex ? "white" : "rgba(255,255,255,0.55)" }} />
+              ))}
+            </div>
+          </>
         )}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-5">
           <h2 className="text-2xl font-black text-white">{dog.dog_name}</h2>

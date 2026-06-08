@@ -12,6 +12,7 @@ export interface Database {
           walk_time: string[];
           personality: string[]; bio: string | null;
           avatar_url: string | null; location: string | null;
+          photo_urls: string[];
           is_active: boolean; created_at: string; updated_at: string;
         };
         Insert: {
@@ -22,6 +23,7 @@ export interface Database {
           walk_time?: string[];
           personality?: string[]; bio?: string | null;
           avatar_url?: string | null; location?: string | null;
+          photo_urls?: string[];
           is_active?: boolean; created_at?: string; updated_at?: string;
         };
         Update: {
@@ -32,6 +34,7 @@ export interface Database {
           walk_time?: string[];
           personality?: string[]; bio?: string | null;
           avatar_url?: string | null; location?: string | null;
+          photo_urls?: string[];
           is_active?: boolean; created_at?: string; updated_at?: string;
         };
         Relationships: [];

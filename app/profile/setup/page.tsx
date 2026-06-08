@@ -3,12 +3,91 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/types/database";
-import { Camera } from "lucide-react";
+import { Camera, X, Plus } from "lucide-react";
 
 const BREEDS = ["柴犬","トイプードル","チワワ","ダックスフント","ゴールデンレトリバー","ラブラドール","フレンチブルドッグ","プードル","ポメラニアン","マルチーズ","シーズー","ビーグル","ボーダーコリー","コーギー","秋田犬","北海道犬","雑種・ミックス","その他"];
 const PERSONALITY_OPTIONS = ["元気いっぱい","おっとり","甘えん坊","遊び好き","人見知り","社交的","おとなしい","やんちゃ","賢い","食いしん坊","運動好き","お散歩大好き"];
 const WALK_TIMES = ["🌅 早朝（5〜7時）","☀️ 朝（7〜9時）","🌤️ 昼（11〜13時）","🌇 夕方（16〜18時）","🌆 夕方〜夜（18〜20時）","🌙 夜（20時以降）"];
 const PREFECTURES = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+
+const CROP_SIZE = 300;
+
+function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob: Blob) => void; onCancel: () => void }) {
+  const [imgNatural, setImgNatural] = useState({ w: 0, h: 0 });
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const [dragging, setDragging] = useState(false);
+  const lastRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
+      setScale(s);
+      setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });
+      setPos({ x: (CROP_SIZE - img.naturalWidth * s) / 2, y: (CROP_SIZE - img.naturalHeight * s) / 2 });
+    };
+    img.src = src;
+  }, [src]);
+
+  function getPoint(e: React.MouseEvent | React.TouchEvent) {
+    return "touches" in e ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: (e as React.MouseEvent).clientX, y: (e as React.MouseEvent).clientY };
+  }
+
+  function onDown(e: React.MouseEvent | React.TouchEvent) {
+    setDragging(true);
+    lastRef.current = getPoint(e);
+  }
+  function onMove(e: React.MouseEvent | React.TouchEvent) {
+    if (!dragging) return;
+    e.preventDefault();
+    const p = getPoint(e);
+    const dx = p.x - lastRef.current.x;
+    const dy = p.y - lastRef.current.y;
+    lastRef.current = p;
+    setPos(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+  }
+  function onUp() { setDragging(false); }
+
+  function handleConfirm() {
+    const canvas = document.createElement("canvas");
+    canvas.width = CROP_SIZE;
+    canvas.height = CROP_SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx || !imgNatural.w) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, pos.x, pos.y, imgNatural.w * scale, imgNatural.h * scale);
+      canvas.toBlob(blob => { if (blob) onConfirm(blob); }, "image/jpeg", 0.88);
+    };
+    img.src = src;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4">
+      <div className="bg-white rounded-2xl p-4 w-full max-w-xs">
+        <p className="text-center text-sm font-bold mb-3" style={{ color: "#1e3a5c" }}>写真をトリミング</p>
+        <div
+          className="relative overflow-hidden rounded-xl mx-auto select-none"
+          style={{ width: CROP_SIZE, height: CROP_SIZE, background: "#e5e7eb", cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
+          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+          onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
+        >
+          {imgNatural.w > 0 && (
+            <img src={src} alt="" draggable={false}
+              style={{ position: "absolute", left: pos.x, top: pos.y, width: imgNatural.w * scale, height: imgNatural.h * scale, userSelect: "none", pointerEvents: "none" }}
+            />
+          )}
+        </div>
+        <p className="text-xs text-center text-gray-400 mt-2 mb-4">ドラッグして位置を調整</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border text-sm font-semibold text-gray-600" style={{ borderColor: "#e8e4dd" }}>キャンセル</button>
+          <button onClick={handleConfirm} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#1e3a5c" }}>確定</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfileSetupPage() {
   const router = useRouter();
@@ -17,7 +96,6 @@ export default function ProfileSetupPage() {
   const [error, setError] = useState("");
   const [existing, setExisting] = useState<Profile | null>(null);
 
-  // フォーム状態
   const [dogName, setDogName] = useState("");
   const [breed, setBreed] = useState("");
   const [ageYears, setAgeYears] = useState("");
@@ -28,18 +106,20 @@ export default function ProfileSetupPage() {
   const [personality, setPersonality] = useState<string[]>([]);
   const [walkTime, setWalkTime] = useState<string[]>([]);
 
-  // アバター
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // 既存プロフィールを取得してプリセット
+  const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
+  const [newPhotoItems, setNewPhotoItems] = useState<{ blob: Blob; preview: string }[]>([]);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const multiPhotoRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
-
       const { data: p } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       if (p) {
         setExisting(p as Profile);
@@ -53,6 +133,7 @@ export default function ProfileSetupPage() {
         setPersonality(p.personality ?? []);
         setWalkTime(p.walk_time ?? []);
         setAvatarPreview(p.avatar_url ?? null);
+        setExistingPhotoUrls((p as Profile & { photo_urls?: string[] }).photo_urls ?? []);
       }
       setInitialLoading(false);
     }
@@ -68,18 +149,30 @@ export default function ProfileSetupPage() {
     if (!f) return;
     setAvatarFile(f);
     setAvatarPreview(URL.createObjectURL(f));
+    e.target.value = "";
+  }
+
+  function handleMultiPhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setCropSrc(URL.createObjectURL(f));
+    e.target.value = "";
+  }
+
+  function handleCropConfirm(blob: Blob) {
+    const preview = URL.createObjectURL(blob);
+    setNewPhotoItems(prev => [...prev, { blob, preview }]);
+    setCropSrc(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!dogName.trim()) { setError("犬の名前を入力してください"); return; }
     setLoading(true); setError("");
-
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/login"); return; }
 
-    // アバターアップロード
     let avatarUrl = existing?.avatar_url ?? null;
     if (avatarFile) {
       const ext = avatarFile.name.split(".").pop();
@@ -88,6 +181,16 @@ export default function ProfileSetupPage() {
       if (uploadErr) { setError("画像のアップロードに失敗しました"); setLoading(false); return; }
       const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
       avatarUrl = publicUrl;
+    }
+
+    let photoUrls = [...existingPhotoUrls];
+    for (const { blob } of newPhotoItems) {
+      const path = `${user.id}/photos/photo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
+      const { error: uploadErr } = await supabase.storage.from("avatars").upload(path, blob, { contentType: "image/jpeg", upsert: true });
+      if (!uploadErr) {
+        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+        photoUrls.push(publicUrl);
+      }
     }
 
     const payload = {
@@ -103,12 +206,15 @@ export default function ProfileSetupPage() {
       bio: bio.trim() || null,
       location: location || null,
       avatar_url: avatarUrl,
+      photo_urls: photoUrls,
     };
 
     const { error: upsertErr } = await supabase.from("profiles").upsert(payload);
     if (upsertErr) { setError(upsertErr.message); setLoading(false); return; }
     router.push("/profile");
   }
+
+  const totalPhotos = existingPhotoUrls.length + newPhotoItems.length;
 
   if (initialLoading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "linear-gradient(135deg,#f0f4f8,#e8e0d0,#f5f0e8)" }}>
@@ -120,6 +226,8 @@ export default function ProfileSetupPage() {
 
   return (
     <div className="min-h-screen px-4 py-8" style={{ background: "linear-gradient(135deg,#f0f4f8 0%,#e8e0d0 50%,#f5f0e8 100%)" }}>
+      {cropSrc && <CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={() => setCropSrc(null)} />}
+
       <div className="max-w-md mx-auto bg-white rounded-3xl p-6" style={{ boxShadow: "0 8px 40px rgba(30,58,92,0.10)" }}>
         <div className="text-center mb-6">
           <h1 className="text-xl font-black" style={{ color: "#1e3a5c" }}>
@@ -132,14 +240,11 @@ export default function ProfileSetupPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
-          {/* アバター画像 */}
           <div className="flex flex-col items-center">
             <div className="relative">
               <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-amber-200 bg-amber-50 flex items-center justify-center cursor-pointer"
                 onClick={() => fileRef.current?.click()}>
-                {avatarPreview
-                  ? <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
-                  : <span className="text-4xl">🐕</span>}
+                {avatarPreview ? <img src={avatarPreview} alt="" className="w-full h-full object-cover" /> : <span className="text-4xl">🐕</span>}
               </div>
               <button type="button" onClick={() => fileRef.current?.click()}
                 className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md touch-manipulation"
@@ -148,10 +253,45 @@ export default function ProfileSetupPage() {
               </button>
             </div>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-            <p className="text-xs mt-2" style={{ color: "#94a3b8" }}>タップして写真を変更</p>
+            <p className="text-xs mt-2" style={{ color: "#94a3b8" }}>タップしてアイコン写真を変更</p>
           </div>
 
-          {/* 犬の名前 */}
+          <div>
+            <label className="block text-sm font-bold mb-2" style={{ color: "#1e3a5c" }}>
+              写真ギャラリー<span className="font-normal text-gray-400 ml-1.5">（最大6枚）</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {existingPhotoUrls.map((url, i) => (
+                <div key={"ex" + i} className="relative aspect-square rounded-xl overflow-hidden bg-amber-50">
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => setExistingPhotoUrls(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/55 flex items-center justify-center touch-manipulation">
+                    <X size={12} color="white" />
+                  </button>
+                </div>
+              ))}
+              {newPhotoItems.map((item, i) => (
+                <div key={"new" + i} className="relative aspect-square rounded-xl overflow-hidden bg-amber-50">
+                  <img src={item.preview} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => setNewPhotoItems(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/55 flex items-center justify-center touch-manipulation">
+                    <X size={12} color="white" />
+                  </button>
+                </div>
+              ))}
+              {totalPhotos < 6 && (
+                <button type="button" onClick={() => multiPhotoRef.current?.click()}
+                  className="aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 touch-manipulation"
+                  style={{ borderColor: "#fcd34d", color: "#f59e0b" }}>
+                  <Plus size={20} />
+                  <span className="text-xs font-medium">追加</span>
+                </button>
+              )}
+            </div>
+            <input ref={multiPhotoRef} type="file" accept="image/*" className="hidden" onChange={handleMultiPhotoSelect} />
+            <p className="text-xs mt-1.5" style={{ color: "#94a3b8" }}>追加した写真はトリミングできます</p>
+          </div>
+
           <div>
             <label className="block text-sm font-bold mb-1" style={{ color: "#1e3a5c" }}>犬の名前 *</label>
             <input value={dogName} onChange={e => setDogName(e.target.value)} required
@@ -159,7 +299,6 @@ export default function ProfileSetupPage() {
               style={{ borderColor: "#e8e4dd" }} placeholder="ポチ" />
           </div>
 
-          {/* 性別 */}
           <div>
             <label className="block text-sm font-bold mb-2" style={{ color: "#1e3a5c" }}>性別</label>
             <div className="flex gap-3">
@@ -168,17 +307,13 @@ export default function ProfileSetupPage() {
                 <button key={g.value} type="button"
                   onClick={() => setGender(gender === g.value ? "" : g.value as "male" | "female")}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all touch-manipulation"
-                  style={{
-                    borderColor: gender === g.value ? g.color : "#e8e4dd",
-                    background: gender === g.value ? g.bg : "white",
-                    color: gender === g.value ? g.color : "#6b7280",
-                  }}>{g.label}
+                  style={{ borderColor: gender === g.value ? g.color : "#e8e4dd", background: gender === g.value ? g.bg : "white", color: gender === g.value ? g.color : "#6b7280" }}>
+                  {g.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 犬種 */}
           <div>
             <label className="block text-sm font-bold mb-1" style={{ color: "#1e3a5c" }}>犬種</label>
             <select value={breed} onChange={e => setBreed(e.target.value)}
@@ -189,7 +324,6 @@ export default function ProfileSetupPage() {
             </select>
           </div>
 
-          {/* 年齢・サイズ */}
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-sm font-bold mb-1" style={{ color: "#1e3a5c" }}>年齢</label>
@@ -210,41 +344,32 @@ export default function ProfileSetupPage() {
             </div>
           </div>
 
-          {/* お散歩時間帯 */}
           <div>
             <label className="block text-sm font-bold mb-2" style={{ color: "#1e3a5c" }}>お散歩の時間帯</label>
             <div className="flex flex-wrap gap-2">
               {WALK_TIMES.map(t => (
                 <button key={t} type="button" onClick={() => toggle(walkTime, setWalkTime, t)}
                   className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors touch-manipulation border"
-                  style={{
-                    background: walkTime.includes(t) ? "#1e3a5c" : "white",
-                    color: walkTime.includes(t) ? "white" : "#64748b",
-                    borderColor: walkTime.includes(t) ? "#1e3a5c" : "#e8e4dd",
-                  }}>{t}
+                  style={{ background: walkTime.includes(t) ? "#1e3a5c" : "white", color: walkTime.includes(t) ? "white" : "#64748b", borderColor: walkTime.includes(t) ? "#1e3a5c" : "#e8e4dd" }}>
+                  {t}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 性格 */}
           <div>
             <label className="block text-sm font-bold mb-2" style={{ color: "#1e3a5c" }}>性格</label>
             <div className="flex flex-wrap gap-2">
               {PERSONALITY_OPTIONS.map(tag => (
                 <button key={tag} type="button" onClick={() => toggle(personality, setPersonality, tag)}
                   className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors touch-manipulation border"
-                  style={{
-                    background: personality.includes(tag) ? "#f59e0b" : "white",
-                    color: personality.includes(tag) ? "white" : "#64748b",
-                    borderColor: personality.includes(tag) ? "#f59e0b" : "#e8e4dd",
-                  }}>{tag}
+                  style={{ background: personality.includes(tag) ? "#f59e0b" : "white", color: personality.includes(tag) ? "white" : "#64748b", borderColor: personality.includes(tag) ? "#f59e0b" : "#e8e4dd" }}>
+                  {tag}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* エリア */}
           <div>
             <label className="block text-sm font-bold mb-1" style={{ color: "#1e3a5c" }}>エリア</label>
             <select value={location} onChange={e => setLocation(e.target.value)}
@@ -255,7 +380,6 @@ export default function ProfileSetupPage() {
             </select>
           </div>
 
-          {/* 自己紹介 */}
           <div>
             <label className="block text-sm font-bold mb-1" style={{ color: "#1e3a5c" }}>自己紹介</label>
             <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}

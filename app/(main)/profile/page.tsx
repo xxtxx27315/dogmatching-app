@@ -11,6 +11,8 @@ const GENDER_LABEL: Record<string, string> = { male: "♂ おとこの子", fema
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [likesReceived, setLikesReceived] = useState(0);
+  const [matchCount, setMatchCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,6 +33,13 @@ export default function ProfilePage() {
 
       const { data: postData } = await supabase.from("posts").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
       setPosts(postData ?? []);
+
+      const [{ count: likeCnt }, { count: matchCnt }] = await Promise.all([
+        supabase.from("likes").select("id", { count: "exact", head: true }).eq("to_dog", user.id),
+        supabase.from("matches").select("id", { count: "exact", head: true }).or(`dog1_id.eq.${user.id},dog2_id.eq.${user.id}`),
+      ]);
+      setLikesReceived(likeCnt ?? 0);
+      setMatchCount(matchCnt ?? 0);
       setLoading(false);
     }
     load();
@@ -59,6 +68,8 @@ export default function ProfilePage() {
           <div className="flex-1 pt-1">
             <div className="flex gap-5 mb-3">
               <div className="text-center"><p className="font-bold text-gray-900">{posts.length}</p><p className="text-xs text-gray-500">投稿</p></div>
+              <div className="text-center"><p className="font-bold text-gray-900">{likesReceived}</p><p className="text-xs text-gray-500">いいね</p></div>
+              <div className="text-center"><p className="font-bold text-gray-900">{matchCount}</p><p className="text-xs text-gray-500">マッチ</p></div>
             </div>
             <Link href="/profile/edit" className="flex items-center justify-center gap-1.5 w-full border border-gray-300 rounded-lg py-1.5 text-sm font-semibold text-gray-700 active:bg-gray-50">
               <Pencil size={14} />プロフィールを編集
