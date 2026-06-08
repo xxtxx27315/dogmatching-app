@@ -113,6 +113,7 @@ export default function ProfileSetupPage() {
   const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
   const [newPhotoItems, setNewPhotoItems] = useState<{ blob: Blob; preview: string }[]>([]);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [avatarCropSrc, setAvatarCropSrc] = useState<string | null>(null);
   const multiPhotoRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -147,9 +148,14 @@ export default function ProfileSetupPage() {
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    setAvatarFile(f);
-    setAvatarPreview(URL.createObjectURL(f));
+    setAvatarCropSrc(URL.createObjectURL(f));
     e.target.value = "";
+  }
+
+  function handleAvatarCropConfirm(blob: Blob) {
+    setAvatarFile(new File([blob], "avatar.jpg", { type: "image/jpeg" }));
+    setAvatarPreview(URL.createObjectURL(blob));
+    setAvatarCropSrc(null);
   }
 
   function handleMultiPhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -226,6 +232,7 @@ export default function ProfileSetupPage() {
 
   return (
     <div className="min-h-screen px-4 py-8" style={{ background: "linear-gradient(135deg,#f0f4f8 0%,#e8e0d0 50%,#f5f0e8 100%)" }}>
+      {avatarCropSrc && <CropModal src={avatarCropSrc} onConfirm={handleAvatarCropConfirm} onCancel={() => setAvatarCropSrc(null)} />}
       {cropSrc && <CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={() => setCropSrc(null)} />}
 
       <div className="max-w-md mx-auto bg-white rounded-3xl p-6" style={{ boxShadow: "0 8px 40px rgba(30,58,92,0.10)" }}>
