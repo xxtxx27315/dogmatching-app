@@ -524,17 +524,3 @@ export default function ProfileSetupPage() {
     </div>
   );
 }
-b" }}>
-                キャンセル
-              </button>
-            )}
-            <button type="submit" disabled={loading}
-              className="flex-1 text-white font-bold py-3 rounded-2xl disabled:opacity-50 premium-button touch-manipulation">
-              {loading ? "保存中..." : isEdit ? "保存する" : "友達を探す 🐾"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
