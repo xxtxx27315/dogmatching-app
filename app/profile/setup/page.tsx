@@ -22,6 +22,10 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
   const [dragging, setDragging] = useState(false);
   const lastRef = useRef({ x: 0, y: 0 });
   const pinchDistRef = useRef<number | null>(null);
+  // stale closure 対策: ref で最新値を保持
+  const zoomRef = useRef(1);
+  const posRef = useRef({ x: 0, y: 0 });
+  const baseScaleRef = useRef(1);
 
   const scale = baseScale * zoom;
 
@@ -29,24 +33,32 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
     const img = new Image();
     img.onload = () => {
       const s = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
+      const initPos = { x: (CROP_SIZE - img.naturalWidth * s) / 2, y: (CROP_SIZE - img.naturalHeight * s) / 2 };
+      baseScaleRef.current = s;
+      zoomRef.current = 1;
+      posRef.current = initPos;
       setBaseScale(s);
       setZoom(1);
       setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });
-      setPos({ x: (CROP_SIZE - img.naturalWidth * s) / 2, y: (CROP_SIZE - img.naturalHeight * s) / 2 });
+      setPos(initPos);
     };
     img.src = src;
   }, [src]);
 
-  function applyZoom(newZoom: number, currentPos: { x: number; y: number }) {
+  function applyZoom(newZoom: number) {
     const clamped = Math.min(4, Math.max(0.5, newZoom));
-    const oldScale = baseScale * zoom;
-    const newScale = baseScale * clamped;
+    const bs = baseScaleRef.current;
+    const oldScale = bs * zoomRef.current;
+    const newScale = bs * clamped;
     const cx = CROP_SIZE / 2;
     const cy = CROP_SIZE / 2;
-    const imgCx = (cx - currentPos.x) / oldScale;
-    const imgCy = (cy - currentPos.y) / oldScale;
-    setPos({ x: cx - imgCx * newScale, y: cy - imgCy * newScale });
+    const imgCx = (cx - posRef.current.x) / oldScale;
+    const imgCy = (cy - posRef.current.y) / oldScale;
+    const newPos = { x: cx - imgCx * newScale, y: cy - imgCy * newScale };
+    zoomRef.current = clamped;
+    posRef.current = newPos;
     setZoom(clamped);
+    setPos(newPos);
   }
 
   function getPoint(e: React.MouseEvent | React.TouchEvent) {
@@ -74,17 +86,7 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
       const dist = pinchDist(e as React.TouchEvent);
       if (dist && pinchDistRef.current) {
         const ratio = dist / pinchDistRef.current;
-        setPos(p => {
-          const newZoom = Math.min(4, Math.max(0.5, zoom * ratio));
-          const oldScale = baseScale * zoom;
-          const newScale = baseScale * newZoom;
-          const cx = CROP_SIZE / 2;
-          const cy = CROP_SIZE / 2;
-          const ix = (cx - p.x) / oldScale;
-          const iy = (cy - p.y) / oldScale;
-          setZoom(newZoom);
-          return { x: cx - ix * newScale, y: cy - iy * newScale };
-        });
+        applyZoom(zoomRef.current * ratio);
         pinchDistRef.current = dist;
       }
       return;
@@ -94,7 +96,9 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
     const dx = p.x - lastRef.current.x;
     const dy = p.y - lastRef.current.y;
     lastRef.current = p;
-    setPos(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    const newPos = { x: posRef.current.x + dx, y: posRef.current.y + dy };
+    posRef.current = newPos;
+    setPos(newPos);
   }
   function onUp() { setDragging(false); pinchDistRef.current = null; }
 
@@ -111,7 +115,7 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
         ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
         ctx.clip();
       }
-      ctx.drawImage(img, pos.x, pos.y, imgNatural.w * scale, imgNatural.h * scale);
+      ctx.drawImage(img, posRef.current.x, posRef.current.y, imgNatural.w * baseScaleRef.current * zoomRef.current, imgNatural.h * baseScaleRef.current * zoomRef.current);
       canvas.toBlob(blob => { if (blob) onConfirm(blob); }, "image/jpeg", 0.92);
     };
     img.src = src;
@@ -144,7 +148,7 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
         {/* ズームスライダー */}
         <div className="mt-3 px-1">
           <input type="range" min="50" max="400" value={Math.round(zoom * 100)}
-            onChange={e => applyZoom(Number(e.target.value) / 100, pos)}
+            onChange={e => applyZoom(Number(e.target.value) / 100)}
             className="w-full" style={{ accentColor: "#f59e0b" }}
           />
           <div className="flex justify-between text-xs mt-0.5" style={{ color: "#94a3b8" }}>
