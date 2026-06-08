@@ -20,38 +20,66 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
   const [baseScale, setBaseScale] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [dragging, setDragging] = useState(false);
+  const [displaySize, setDisplaySize] = useState(CROP_SIZE);
   const lastRef = useRef({ x: 0, y: 0 });
   const pinchDistRef = useRef<number | null>(null);
-  // stale closure 対策: ref で最新値を保持
   const zoomRef = useRef(1);
   const posRef = useRef({ x: 0, y: 0 });
   const baseScaleRef = useRef(1);
+  const displaySizeRef = useRef(CROP_SIZE);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
 
   const scale = baseScale * zoom;
 
+  // コンテナの実際のサイズを取得
   useEffect(() => {
-    const img = new Image();
+    if (containerRef.current) {
+      const size = containerRef.current.offsetWidth;
+      displaySizeRef.current = size;
+      setDisplaySize(size);
+    }
+  }, []);
+
+  // 画像を読み込み・初期化
+  useEffect(() => {
+    const img = new window.Image();
     img.onload = () => {
-      const s = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
-      const initPos = { x: (CROP_SIZE - img.naturalWidth * s) / 2, y: (CROP_SIZE - img.naturalHeight * s) / 2 };
+      const dSize = displaySizeRef.current;
+      const s = Math.max(dSize / img.naturalWidth, dSize / img.naturalHeight);
+      const initPos = { x: (dSize - img.naturalWidth * s) / 2, y: (dSize - img.naturalHeight * s) / 2 };
       baseScaleRef.current = s;
       zoomRef.current = 1;
       posRef.current = initPos;
+      imageRef.current = img;
       setBaseScale(s);
       setZoom(1);
       setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });
       setPos(initPos);
     };
     img.src = src;
-  }, [src]);
+  }, [src, displaySize]);
+
+  // キャンバスにプレビューを描画（CSS変換を使わず直接描画）
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    if (!canvas || !img || imgNatural.w === 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dSize = displaySizeRef.current;
+    ctx.clearRect(0, 0, dSize, dSize);
+    ctx.drawImage(img, pos.x, pos.y, imgNatural.w * scale, imgNatural.h * scale);
+  }, [pos, scale, imgNatural, displaySize]);
 
   function applyZoom(newZoom: number) {
     const clamped = Math.min(4, Math.max(0.5, newZoom));
     const bs = baseScaleRef.current;
     const oldScale = bs * zoomRef.current;
     const newScale = bs * clamped;
-    const cx = CROP_SIZE / 2;
-    const cy = CROP_SIZE / 2;
+    const cx = displaySizeRef.current / 2;
+    const cy = displaySizeRef.current / 2;
     const imgCx = (cx - posRef.current.x) / oldScale;
     const imgCy = (cy - posRef.current.y) / oldScale;
     const newPos = { x: cx - imgCx * newScale, y: cy - imgCy * newScale };
@@ -103,22 +131,24 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
   function onUp() { setDragging(false); pinchDistRef.current = null; }
 
   function handleConfirm() {
+    const img = imageRef.current;
+    if (!img || !imgNatural.w) return;
     const canvas = document.createElement("canvas");
     canvas.width = CROP_SIZE;
     canvas.height = CROP_SIZE;
     const ctx = canvas.getContext("2d");
-    if (!ctx || !imgNatural.w) return;
-    const img = new Image();
-    img.onload = () => {
-      if (circular) {
-        ctx.beginPath();
-        ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
-        ctx.clip();
-      }
-      ctx.drawImage(img, posRef.current.x, posRef.current.y, imgNatural.w * baseScaleRef.current * zoomRef.current, imgNatural.h * baseScaleRef.current * zoomRef.current);
-      canvas.toBlob(blob => { if (blob) onConfirm(blob); }, "image/jpeg", 0.92);
-    };
-    img.src = src;
+    if (!ctx) return;
+    const ratio = CROP_SIZE / displaySizeRef.current;
+    const drawScale = baseScaleRef.current * zoomRef.current * ratio;
+    const drawX = posRef.current.x * ratio;
+    const drawY = posRef.current.y * ratio;
+    if (circular) {
+      ctx.beginPath();
+      ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+      ctx.clip();
+    }
+    ctx.drawImage(img, drawX, drawY, imgNatural.w * drawScale, imgNatural.h * drawScale);
+    canvas.toBlob(blob => { if (blob) onConfirm(blob); }, "image/jpeg", 0.92);
   }
 
   return (
@@ -126,16 +156,18 @@ function CropModal({ src, onConfirm, onCancel, circular = false }: {
       <div className="bg-white rounded-2xl p-4 w-full max-w-xs">
         <p className="text-center text-sm font-bold mb-3" style={{ color: "#1e3a5c" }}>写真をトリミング</p>
         <div
+          ref={containerRef}
           className="relative overflow-hidden mx-auto select-none"
-          style={{ width: CROP_SIZE, height: CROP_SIZE, background: "#e5e7eb", cursor: dragging ? "grabbing" : "grab", touchAction: "none", borderRadius: circular ? "50%" : "12px" }}
+          style={{ width: "100%", aspectRatio: "1 / 1", background: "#e5e7eb", cursor: dragging ? "grabbing" : "grab", touchAction: "none", borderRadius: circular ? "50%" : "12px" }}
           onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
           onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
         >
-          {imgNatural.w > 0 && (
-            <img src={src} alt="" draggable={false}
-              style={{ position: "absolute", left: pos.x, top: pos.y, width: imgNatural.w * scale, height: imgNatural.h * scale, userSelect: "none", pointerEvents: "none" }}
-            />
-          )}
+          <canvas
+            ref={canvasRef}
+            width={displaySize}
+            height={displaySize}
+            style={{ display: "block", width: "100%", height: "100%" }}
+          />
           {/* グリッド */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
             <div style={{ position: "absolute", left: "33.3%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.35)" }} />
@@ -479,6 +511,20 @@ export default function ProfileSetupPage() {
               <button type="button" onClick={() => router.push("/profile")}
                 className="flex-1 py-3 rounded-2xl text-sm font-semibold border-2 touch-manipulation"
                 style={{ borderColor: "#e8e4dd", color: "#64748b" }}>
+                キャンセル
+              </button>
+            )}
+            <button type="submit" disabled={loading}
+              className="flex-1 text-white font-bold py-3 rounded-2xl disabled:opacity-50 premium-button touch-manipulation">
+              {loading ? "保存中..." : isEdit ? "保存する" : "友達を探す 🐾"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+b" }}>
                 キャンセル
               </button>
             )}
